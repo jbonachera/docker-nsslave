@@ -1,0 +1,39 @@
+#!/bin/bash
+
+fail(){
+    echo "$@"
+    exit 1
+}
+
+[ -n "${ZONES}" ] || fail "SLAVE_ZONE env var must be specified"
+[ -n "${MASTER}" ] || fail "MASTER env var must be specified"
+[ -n "${KEY_NAME}" ] || fail "KEY_NAME env var must be specified"
+[ -n "${KEY_ALG}" ] || fail "KEY_ALG env var must be specified"
+[ -n "${KEY_SECRET}" ] || fail "KEY_SECRET env var must be specified"
+
+if [ ! -e /.bootstraped ]; then
+    chown named: /var/named/slave -R
+    cat >> /etc/named.conf << EOF
+key "${KEY_NAME}" {
+    algorithm ${KEY_ALG};
+    secret "${KEY_SECRET}";
+};
+server ${MASTER} {
+    keys { ${KEY_NAME}; };
+};
+EOF
+     for ZONE in $ZONES; do
+     cat >> /etc/named.conf << EOF
+zone "${ZONE}" {
+    type slave;
+    masters { ${MASTER}; };
+    masterfile-format text;
+    file "/var/named/slave/${ZONE}.zone";
+};
+EOF
+done
+touch /.bootstraped
+fi
+
+named-checkconf -z
+exec /usr/sbin/named -u named -g -4
